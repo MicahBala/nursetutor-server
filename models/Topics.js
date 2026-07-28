@@ -1,46 +1,86 @@
 import mongoose from "mongoose";
 
-// 1. Schema for the individual paragraphs in the reading section
-const reviewSectionSchema = new mongoose.Schema({
-    subheading: { type: String, required: true },
-    paragraphText: { type: String, required: true }
-});
-
-// 2. Schema for the exam questions
+// 1. Schema for generated quiz questions
 const questionSchema = new mongoose.Schema({
-    type: {
+    questionText: {
         type: String,
-        enum: ['recall', 'scenario', 'calculation'], // Keeps data consistent
-        default: 'recall'
+        required: true
     },
-    questionText: { type: String, required: true },
-    options: [{ type: String, required: true }], // Array of strings (A, B, C, D)
-    correctAnswer: { type: String, required: true },
-    rationale: { type: String, required: true }
-});
+    optionA: {
+        type: String,
+        required: true
+    },
+    optionB: {
+        type: String,
+        required: true
+    },
+    optionC: {
+        type: String,
+        required: true
+    },
+    optionD: {
+        type: String,
+        required: true
+    },
+    correctAnswer: {
+        type: String,
+        required: true // Expected: 'A', 'B', 'C', or 'D'
+    },
+    rationale: {
+        type: String,
+        required: true
+    }
+}, { _id: true });
 
-// 3. The Main Topic Schema
+// 2. Main Topic Schema
 const topicSchema = new mongoose.Schema({
-    // A URL-friendly ID (e.g., "ethics-negligence-malpractice")
     topicId: {
         type: String,
         required: true,
         unique: true,
-        index: true // Makes searching by URL super fast
+        trim: true,
+        index: true // Fast lookup by URL/ID
     },
-    title: { type: String, required: true },
-    description: { type: String, required: true },
-    tags: [{ type: String }], // e.g., ["Ethics", "Law"]
-    price: { type: Number, default: 500 },
-    isFree: { type: Boolean, default: false },
-
-    // The reading material
-    content: {
-        comprehensiveReview: [reviewSectionSchema],
-        theCatch: { type: String } // The NMCN exam trap
+    topicName: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    courseName: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    description: {
+        type: String,
+        default: ""
+    },
+    tags: [{
+        type: String,
+        trim: true
+    }],
+    price: {
+        type: Number,
+        default: 500
+    },
+    isFree: {
+        type: Boolean,
+        default: false
     },
 
-    // The embedded array of questions
+    // Cache flag: false when seeded, true once Gemini generates content
+    isPopulated: {
+        type: Boolean,
+        default: false
+    },
+
+    // Gemini-generated Markdown study article
+    articleContent: {
+        type: String,
+        default: ""
+    },
+
+    // Gemini-generated questions array
     questions: [questionSchema]
 }, {
     timestamps: true
