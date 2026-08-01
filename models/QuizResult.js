@@ -1,53 +1,72 @@
 import mongoose from 'mongoose';
 
-// Schema to store detailed response for each question (enables "Review Exam" feature)
 const userAnswerSchema = new mongoose.Schema({
+    questionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Question' },
+    topicId: { type: String },
+    topicName: { type: String },
     questionText: { type: String, required: true },
-    selectedOption: { type: String, required: true }, // e.g., "Option A" or choice text
-    correctAnswer: { type: String, required: true }, // e.g., "A"
-    isCorrect: { type: Boolean, required: true },
+
+    // Options so the frontend can display them
+    optionA: { type: String, required: true },
+    optionB: { type: String, required: true },
+    optionC: { type: String, required: true },
+    optionD: { type: String, required: true },
+
+    selectedOption: { type: String, default: null },
+    correctAnswer: { type: String, required: true },
+    isCorrect: { type: Boolean, default: false },
     rationale: { type: String, required: true }
 }, { _id: false });
 
 const quizResultSchema = new mongoose.Schema({
-    // The Firebase UID of the student
     userId: {
         type: String,
         required: true,
         index: true
     },
 
-    // The specific topic ID (for single-topic quizzes)
-    topicId: {
+    // Replaced single topicId with an array, since Mock Exams cover multiple topics
+    selectedTopicIds: [{
+        type: String
+    }],
+
+    examTitle: {
         type: String,
-        required: true,
-        index: true // Fast query: "Find all attempts by User X for Topic Y"
+        default: "NMCN Mock Exam"
     },
 
-    topicName: {
+    // Async Exam Tracking
+    status: {
         type: String,
+        enum: ['in-progress', 'completed'],
+        default: 'in-progress'
+    },
+
+    timeRemaining: {
+        type: Number,
+        default: 3600, // 60 minutes represented in seconds
         required: true
     },
 
-    // High-level scores
-    overallScore: { type: Number, required: true }, // e.g., 70 (Percentage)
-    totalCorrect: { type: Number, required: true },
+    // Scores default to 0 while in-progress
+    overallScore: { type: Number, default: 0 },
+    totalCorrect: { type: Number, default: 0 },
     totalQuestions: { type: Number, required: true },
 
-    // Granular question breakdown for post-quiz review
+    // The questions pulled from the Question Bank
     userAnswers: [userAnswerSchema],
 
-    // Multi-topic exam breakdown (useful if you create full 50-question semester mock exams later)
+    // FIX: Updated variable names to perfectly match the Controller and Frontend!
     topicBreakdown: [{
-        topicId: { type: String, required: true },
-        topicTitle: { type: String, required: true },
-        correct: { type: Number, required: true },
-        total: { type: Number, required: true },
-        percentage: { type: Number, required: true }
+        topicId: { type: String },
+        topicName: { type: String },
+        correctAnswers: { type: Number, default: 0 },
+        totalQuestions: { type: Number, default: 0 },
+        scorePercentage: { type: Number, default: 0 }
     }],
 
-    // Timestamp
-    takenAt: { type: Date, default: Date.now }
+    startedAt: { type: Date, default: Date.now },
+    completedAt: { type: Date } // Kept only one instance of completedAt
 }, {
     timestamps: true
 });
