@@ -13,7 +13,22 @@ import adminRoutes from './routes/adminRoute.js';
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://nursetutor-client.vercel.app' // Your Vercel domain
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('CORS policy violation'));
+    },
+    credentials: true
+}));
 app.use(express.json());
 
 app.use('/api/users', userRoutes);
