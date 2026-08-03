@@ -1,5 +1,5 @@
 import Topic from "../models/Topics.js";
-import { Groq } from 'groq-sdk';
+import Groq from 'groq-sdk';
 
 // Initialize the Groq Client
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -35,9 +35,9 @@ export const getTopicById = async (req, res) => {
         }
 
         // 3. CACHE MISS: Generate the content with Groq
-        console.log(`🚀 Generating content for [${topic.topicName}] via Groq...`);
+        console.log(`🚀 Generating content for [${topic.topicName}] via Groq (Fallback)...`);
 
-        const prompt = `Generate the study content for Topic: "${topic.topicName}" within the Course: "${topic.courseName}".
+        const prompt = `Generate the study content for Topic: "${topic.topicName}" within the Course: "${topic.courseName || 'General Nursing'}".
 
         Part 1: Write a comprehensive, high-yield article (800 - 1,100 words, designed for a strict 5 to 7-minute read) focusing on the most difficult and frequently tested aspects.
 
@@ -75,12 +75,18 @@ export const getTopicById = async (req, res) => {
             response_format: { type: "json_object" } // Forces perfect JSON output
         });
 
-        // 4. Parse the generated JSON
-        const generatedData = JSON.parse(response.choices[0].message.content);
+        // 4. Parse the generated JSON safely
+        let generatedData;
+        try {
+            generatedData = JSON.parse(response.choices[0].message.content);
+        } catch (parseError) {
+            console.error("❌ AI returned malformed JSON:", response.choices[0].message.content);
+            return res.status(500).json({ error: 'AI failed to format the response correctly. Please try again.' });
+        }
 
         // 5. Update the MongoDB document and flip the cache flag
-        topic.articleContent = generatedData.articleContent;
-        topic.questions = generatedData.questions;
+        topic.articleContent = generatedData.articleContent || "";
+        topic.questions = generatedData.questions || [];
         topic.isPopulated = true;
 
         await topic.save();

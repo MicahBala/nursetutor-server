@@ -25,7 +25,19 @@ const userSchema = new mongoose.Schema(
         mockExamCredits: {
             type: Number,
             default: 0, // Every new user starts with 0 credits
-        }
+        },
+        unlockedTopics: [
+            {
+                topicId: {
+                    type: String,
+                    required: true
+                },
+                expiresAt: {
+                    type: Date,
+                    required: true
+                }
+            }
+        ]
     },
     {
         // This automatically creates 'createdAt' and 'updatedAt' timestamps for every user

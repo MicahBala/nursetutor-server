@@ -140,3 +140,106 @@ export const createTopic = async (req, res) => {
         res.status(500).json({ error: 'Server error creating topic' });
     }
 };
+
+// Admin Tool: Manually unlock a topic for a user (e.g., 30 days)
+export const unlockTopicForUser = async (req, res) => {
+    try {
+        const { email, topicId, days = 30 } = req.body;
+
+        const user = await User.findOne({ email });
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        // Calculate expiration date
+        const unlockDuration = days * 24 * 60 * 60 * 1000;
+        const expiresAt = new Date(Date.now() + unlockDuration);
+
+        // Check if the user already has this topic unlocked to prevent duplicates
+        const alreadyUnlocked = user.unlockedTopics?.some(
+            (t) => t.topicId.toString() === topicId && new Date(t.expiresAt) > new Date()
+        );
+
+        if (alreadyUnlocked) {
+            return res.status(400).json({ error: 'User already has active access to this topic.' });
+        }
+
+        // Push the new unlock record using the updated Mongoose syntax
+        const updatedUser = await User.findOneAndUpdate(
+            { email },
+            { $push: { unlockedTopics: { topicId, expiresAt } } },
+            { returnDocument: 'after' }
+        );
+
+        res.status(200).json({
+            message: `Successfully unlocked topic for ${email} for ${days} days.`,
+            expiresAt
+        });
+    } catch (error) {
+        console.error("❌ Error unlocking topic:", error);
+        res.status(500).json({ error: 'Server error while unlocking topic.' });
+    }
+};
+
+// Admin Tool: Generate Study Article and Quizzes via AI
+export const generateTopicContent = async (req, res) => {
+    try {
+        const { topicId, topicName } = req.body;
+
+        if (!topicId || !topicName) {
+            return res.status(400).json({ error: 'Topic ID and Topic Name are required.' });
+        }
+
+        // Prompt for the Article & Quiz in one go
+        const prompt = `
+            You are an expert Nursing Educator for the NMCN. 
+            Create a comprehensive study article and a 5-question quick-recall quiz for the topic: "${topicName}".
+            
+            Format your response STRICTLY as a valid JSON object.
+            
+            Output structure MUST match this exactly:
+            {
+                "article": {
+                    "title": "Main title of the article",
+                    "content": "A detailed, structured study guide in markdown format. Use headings, bullet points, and bold text for emphasis."
+                },
+                "quiz": [
+                    {
+                        "questionText": "A quick recall question",
+                        "options": ["Option A", "Option B", "Option C", "Option D"],
+                        "correctAnswerIndex": 0, // 0 for A, 1 for B, etc.
+                        "explanation": "Brief reason why it's correct."
+                    }
+                ]
+            }
+        `;
+
+        const completion = await groq.chat.completions.create({
+            messages: [
+                { role: 'system', content: 'You are an API that only outputs valid JSON.' },
+                { role: 'user', content: prompt }
+            ],
+            model: 'llama-3.3-70b-versatile',
+            temperature: 0.4,
+            response_format: { type: 'json_object' }
+        });
+
+        const parsedData = JSON.parse(completion.choices[0]?.message?.content || "{}");
+
+        if (!parsedData.article || !parsedData.quiz) {
+            return res.status(500).json({ error: 'AI failed to generate complete content.' });
+        }
+
+        // Here you would save them to your database. 
+        // Assuming you have Article and Quiz models:
+        // await Article.create({ topicId, ...parsedData.article });
+        // await Quiz.create({ topicId, questions: parsedData.quiz });
+
+        res.status(201).json({
+            message: `Successfully generated article and quiz for ${topicName}!`,
+            data: parsedData
+        });
+
+    } catch (error) {
+        console.error("❌ Error generating content:", error);
+        res.status(500).json({ error: 'Failed to generate study materials.' });
+    }
+};
