@@ -18,7 +18,6 @@ export const generateQuestions = async (req, res) => {
         }
 
         // 1. The Prompt for Groq
-        // Wrapped in a JSON object because Groq's JSON mode requires it
         const prompt = `
             You are an expert Nursing Educator setting questions for the Nursing and Midwifery Council of Nigeria (NMCN) professional exams.
             Generate ${count} multiple-choice questions on the topic of "${topicName}". Half of the questions should be scenario-based.
@@ -48,9 +47,9 @@ export const generateQuestions = async (req, res) => {
                 { role: 'system', content: 'You are an API that only outputs valid JSON.' },
                 { role: 'user', content: prompt }
             ],
-            model: 'llama-3.3-70b-versatile', // Standard fast Groq model. Change to llama3-70b-8192 if you want even higher reasoning quality.
+            model: 'llama-3.3-70b-versatile',
             temperature: 0.5,
-            response_format: { type: 'json_object' } // This forces Groq to return perfect JSON!
+            response_format: { type: 'json_object' }
         });
 
         // 3. Extract and parse the JSON
@@ -76,7 +75,7 @@ export const generateQuestions = async (req, res) => {
             difficulty: 'medium'
         }));
 
-        // 5. Save them all to the Question Bank!
+        // 5. Save them all to the Question Bank
         const savedQuestions = await Question.insertMany(formattedQuestions);
 
         res.status(201).json({
@@ -107,13 +106,13 @@ export const topUpCredits = async (req, res) => {
     }
 };
 
-// Bonus Admin Tool: Create a new Topic on the fly
+// Bonus Admin Tool: Create a new Topic on the fly (UPDATED TO INCLUDE COURSENAME)
 export const createTopic = async (req, res) => {
     try {
-        const { title, tags } = req.body;
+        const { title, courseName, tags } = req.body;
 
-        if (!title) {
-            return res.status(400).json({ error: 'Topic title is required' });
+        if (!title || !courseName) {
+            return res.status(400).json({ error: 'Topic title and Course Name are required' });
         }
 
         // Auto-generate a topicId (e.g., "Maternal Health" -> "maternal-health")
@@ -128,7 +127,8 @@ export const createTopic = async (req, res) => {
         const newTopic = new Topic({
             topicId,
             title,
-            topicName: title, // Adding both just to be safe with your schemas
+            topicName: title,
+            courseName, // <-- SAVING COURSE NAME HERE
             tags: tags ? tags.split(',').map(tag => tag.trim()) : []
         });
 
@@ -162,7 +162,6 @@ export const unlockTopicForUser = async (req, res) => {
             return res.status(400).json({ error: 'User already has active access to this topic.' });
         }
 
-        // Push the new unlock record using the updated Mongoose syntax
         const updatedUser = await User.findOneAndUpdate(
             { email },
             { $push: { unlockedTopics: { topicId, expiresAt } } },
@@ -188,7 +187,6 @@ export const generateTopicContent = async (req, res) => {
             return res.status(400).json({ error: 'Topic ID and Topic Name are required.' });
         }
 
-        // Prompt for the Article & Quiz in one go
         const prompt = `
             You are an expert Nursing Educator for the NMCN. 
             Create a comprehensive study article and a 5-question quick-recall quiz for the topic: "${topicName}".
@@ -244,12 +242,10 @@ export const generateTopicContent = async (req, res) => {
 // ==========================================
 export const getAllUsers = async (req, res) => {
     try {
-        // Fetch all users and sort them by newest first
         const users = await User.find({})
             .sort({ createdAt: -1 })
-            .select('-firebaseUid'); // Exclude Firebase UID from being sent to frontend
+            .select('-firebaseUid');
 
-        // Map the users to calculate the total active unlocked topics
         const formattedUsers = users.map(user => {
             const now = new Date();
             const activeTopicsCount = user.unlockedTopics
