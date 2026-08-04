@@ -12,7 +12,7 @@ router.post('/top-up', requireAdmin, topUpCredits);
 
 router.post('/topic', requireAdmin, createTopic);
 
-router.post('/unlock-topic', requireAdmin, unlockTopicForUser);
+router.post('/unlock-topics', requireAdmin, unlockTopicForUser);
 
 router.post('/generate-content', requireAdmin, generateTopicContent);
 
