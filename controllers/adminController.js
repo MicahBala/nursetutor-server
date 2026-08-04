@@ -228,11 +228,6 @@ export const generateTopicContent = async (req, res) => {
             return res.status(500).json({ error: 'AI failed to generate complete content.' });
         }
 
-        // Here you would save them to your database. 
-        // Assuming you have Article and Quiz models:
-        // await Article.create({ topicId, ...parsedData.article });
-        // await Quiz.create({ topicId, questions: parsedData.quiz });
-
         res.status(201).json({
             message: `Successfully generated article and quiz for ${topicName}!`,
             data: parsedData
@@ -241,5 +236,39 @@ export const generateTopicContent = async (req, res) => {
     } catch (error) {
         console.error("❌ Error generating content:", error);
         res.status(500).json({ error: 'Failed to generate study materials.' });
+    }
+};
+
+// ==========================================
+// NEW: GET ALL USERS (Admin Dashboard Overview)
+// ==========================================
+export const getAllUsers = async (req, res) => {
+    try {
+        // Fetch all users and sort them by newest first
+        const users = await User.find({})
+            .sort({ createdAt: -1 })
+            .select('-firebaseUid'); // Exclude Firebase UID from being sent to frontend
+
+        // Map the users to calculate the total active unlocked topics
+        const formattedUsers = users.map(user => {
+            const now = new Date();
+            const activeTopicsCount = user.unlockedTopics
+                ? user.unlockedTopics.filter(t => new Date(t.expiresAt) > now).length
+                : 0;
+
+            return {
+                id: user._id,
+                email: user.email,
+                name: user.name || 'Student',
+                mockExamCredits: user.mockExamCredits || 0,
+                activeTopicsCount: activeTopicsCount,
+                joinedDate: user.createdAt || new Date()
+            };
+        });
+
+        res.json(formattedUsers);
+    } catch (error) {
+        console.error("❌ Error fetching users:", error);
+        res.status(500).json({ error: 'Failed to fetch users.' });
     }
 };

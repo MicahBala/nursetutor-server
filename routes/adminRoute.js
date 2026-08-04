@@ -1,6 +1,6 @@
 import express from 'express';
 import { requireAdmin } from '../middleware/authMiddleware.js';
-import { generateQuestions, topUpCredits, createTopic, unlockTopicForUser, generateTopicContent } from '../controllers/adminController.js';
+import { generateQuestions, topUpCredits, createTopic, unlockTopicForUser, generateTopicContent, getAllUsers } from '../controllers/adminController.js';
 
 const router = express.Router();
 
@@ -16,4 +16,5 @@ router.post('/unlock-topic', requireAdmin, unlockTopicForUser);
 
 router.post('/generate-content', requireAdmin, generateTopicContent);
 
+router.get('/users', requireAdmin, getAllUsers);
 export default router;
