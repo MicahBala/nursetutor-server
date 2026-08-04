@@ -1,4 +1,5 @@
 import Topic from "../models/Topics.js";
+import Question from '../models/Question.js'; // <-- Added Question model import
 import Groq from 'groq-sdk';
 
 // Initialize the Groq Client
@@ -11,8 +12,27 @@ You MUST output your response in valid JSON format ONLY.`;
 
 export const getAllTopics = async (req, res) => {
     try {
+        // 1. Fetch all topics
         const topics = await Topic.find();
-        res.status(200).json(topics);
+
+        // 2. Map through them and count the questions for each topicId
+        // We use Promise.all because we are running multiple async queries against the DB
+        const topicsWithCounts = await Promise.all(topics.map(async (topic) => {
+            const questionCount = await Question.countDocuments({ topicId: topic.topicId });
+
+            return {
+                _id: topic._id,
+                topicId: topic.topicId,
+                title: topic.title,
+                topicName: topic.topicName,
+                courseName: topic.courseName,
+                tags: topic.tags,
+                isPopulated: topic.isPopulated,
+                questionCount: questionCount // <-- This field powers the Exam Bank Overview!
+            };
+        }));
+
+        res.status(200).json(topicsWithCounts);
     } catch (error) {
         console.error("Error fetching topics:", error);
         res.status(500).json({ error: 'Server error while fetching topics' });
