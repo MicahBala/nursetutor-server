@@ -2,6 +2,7 @@ import Groq from 'groq-sdk';
 import Question from '../models/Question.js';
 import User from '../models/User.js';
 import Topic from '../models/Topics.js';
+import Result from '../models/QuizResult.js'; // <-- THIS WAS MISSING!
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -89,7 +90,7 @@ export const generateQuestions = async (req, res) => {
     }
 };
 
-// Bonus Admin Tool: Top up credits for testing
+// Admin Tool: Top up credits for testing
 export const topUpCredits = async (req, res) => {
     try {
         const { email, creditsToAdd } = req.body;
@@ -106,7 +107,7 @@ export const topUpCredits = async (req, res) => {
     }
 };
 
-// Bonus Admin Tool: Create a new Topic on the fly (UPDATED TO INCLUDE COURSENAME)
+// Admin Tool: Create a new Topic on the fly 
 export const createTopic = async (req, res) => {
     try {
         const { title, courseName, tags } = req.body;
@@ -115,10 +116,8 @@ export const createTopic = async (req, res) => {
             return res.status(400).json({ error: 'Topic title and Course Name are required' });
         }
 
-        // Auto-generate a topicId (e.g., "Maternal Health" -> "maternal-health")
         const topicId = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-        // Check if it already exists
         const existingTopic = await Topic.findOne({ topicId });
         if (existingTopic) {
             return res.status(400).json({ error: 'A topic with a similar name already exists.' });
@@ -128,7 +127,7 @@ export const createTopic = async (req, res) => {
             topicId,
             title,
             topicName: title,
-            courseName, // <-- SAVING COURSE NAME HERE
+            courseName,
             tags: tags ? tags.split(',').map(tag => tag.trim()) : []
         });
 
@@ -141,7 +140,7 @@ export const createTopic = async (req, res) => {
     }
 };
 
-// Admin Tool: Manually unlock a topic for a user (e.g., 30 days)
+// Admin Tool: Manually unlock a topic for a user
 export const unlockTopicForUser = async (req, res) => {
     try {
         const { email, topicId, days = 30 } = req.body;
@@ -149,11 +148,9 @@ export const unlockTopicForUser = async (req, res) => {
         const user = await User.findOne({ email });
         if (!user) return res.status(404).json({ error: 'User not found' });
 
-        // Calculate expiration date
         const unlockDuration = days * 24 * 60 * 60 * 1000;
         const expiresAt = new Date(Date.now() + unlockDuration);
 
-        // Check if the user already has this topic unlocked to prevent duplicates
         const alreadyUnlocked = user.unlockedTopics?.some(
             (t) => t.topicId.toString() === topicId && new Date(t.expiresAt) > new Date()
         );
@@ -238,26 +235,31 @@ export const generateTopicContent = async (req, res) => {
 };
 
 // ==========================================
-// NEW: GET ALL USERS (Admin Dashboard Overview)
+// FIXED: GET ALL USERS (Admin Dashboard Overview)
 // ==========================================
 export const getAllUsers = async (req, res) => {
     try {
         const users = await User.find({}).sort({ createdAt: -1 });
 
-        // Must use Promise.all for the database queries inside the map!
+        // Promise.all ensures the database queries finish properly
         const formattedUsers = await Promise.all(users.map(async (user) => {
             const now = new Date();
             const activeTopicsCount = user.unlockedTopics
                 ? user.unlockedTopics.filter(t => new Date(t.expiresAt) > now).length
                 : 0;
 
-            // Use the QuizResult model to count exams (Checks both ID formats)
-            const examsTakenCount = await Result.countDocuments({
-                $or: [
-                    { userId: user.firebaseUid },
-                    { userId: user.email }
-                ]
-            });
+            // Safe Exams Taken count using the QuizResult model
+            let examsTakenCount = 0;
+            try {
+                examsTakenCount = await Result.countDocuments({
+                    $or: [
+                        { userId: user.firebaseUid },
+                        { userId: user.email }
+                    ]
+                });
+            } catch (err) {
+                console.error(`Warning: Could not fetch exam count for ${user.email}`);
+            }
 
             return {
                 id: user._id,
@@ -265,8 +267,8 @@ export const getAllUsers = async (req, res) => {
                 name: user.name || 'Student',
                 mockExamCredits: user.mockExamCredits || 0,
                 activeTopicsCount: activeTopicsCount,
-                examsTaken: examsTakenCount, // <-- Fixed: Passes Exams Taken
-                lastActive: user.lastLogin || user.createdAt, // <-- Fixed: Passes Last Active
+                examsTaken: examsTakenCount,
+                lastActive: user.lastLogin || user.createdAt, // Passed safely to frontend!
                 joinedDate: user.createdAt || new Date()
             };
         }));
