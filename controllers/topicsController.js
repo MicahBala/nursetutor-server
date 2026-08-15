@@ -1,5 +1,5 @@
 import Topic from "../models/Topics.js";
-import Question from '../models/Question.js'; // <-- Added Question model import
+import Question from '../models/Question.js';
 import Groq from 'groq-sdk';
 
 // Initialize the Groq Client
@@ -12,13 +12,20 @@ You MUST output your response in valid JSON format ONLY.`;
 
 export const getAllTopics = async (req, res) => {
     try {
-        // 1. Fetch all topics
+        // 1. Fetch all topics safely
         const topics = await Topic.find();
 
-        // 2. Map through them and count the questions for each topicId
-        // We use Promise.all because we are running multiple async queries against the DB
+        // 2. Map through them and count questions with a safety net
         const topicsWithCounts = await Promise.all(topics.map(async (topic) => {
-            const questionCount = await Question.countDocuments({ topicId: topic.topicId });
+            let questionCount = 0;
+
+            try {
+                // Safely try to count the questions from the standalone Question bank
+                questionCount = await Question.countDocuments({ topicId: topic.topicId });
+            } catch (countError) {
+                console.error(`Warning: Could not count questions for topic ${topic.topicId}`);
+                // It fails silently, keeping questionCount at 0 so the dashboard still loads!
+            }
 
             return {
                 _id: topic._id,
@@ -28,7 +35,7 @@ export const getAllTopics = async (req, res) => {
                 courseName: topic.courseName,
                 tags: topic.tags,
                 isPopulated: topic.isPopulated,
-                questionCount: questionCount // <-- This field powers the Exam Bank Overview!
+                questionCount: questionCount
             };
         }));
 
