@@ -10,6 +10,8 @@ const userSchema = new mongoose.Schema(
         displayName: { type: String },
         photoURL: { type: String },
 
+        lastLogin: { type: Date },
+
         // THE BUSINESS LOGIC: N500 per month per course
         // This is an array of objects. It will hold items like { courseId: 'pharmacology', expiryDate: '2026-06-01' }
         courseSubscriptions: [

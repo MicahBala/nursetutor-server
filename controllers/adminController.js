@@ -242,15 +242,22 @@ export const generateTopicContent = async (req, res) => {
 // ==========================================
 export const getAllUsers = async (req, res) => {
     try {
-        const users = await User.find({})
-            .sort({ createdAt: -1 })
-            .select('-firebaseUid');
+        const users = await User.find({}).sort({ createdAt: -1 });
 
-        const formattedUsers = users.map(user => {
+        // Must use Promise.all for the database queries inside the map!
+        const formattedUsers = await Promise.all(users.map(async (user) => {
             const now = new Date();
             const activeTopicsCount = user.unlockedTopics
                 ? user.unlockedTopics.filter(t => new Date(t.expiresAt) > now).length
                 : 0;
+
+            // Use the QuizResult model to count exams (Checks both ID formats)
+            const examsTakenCount = await Result.countDocuments({
+                $or: [
+                    { userId: user.firebaseUid },
+                    { userId: user.email }
+                ]
+            });
 
             return {
                 id: user._id,
@@ -258,9 +265,11 @@ export const getAllUsers = async (req, res) => {
                 name: user.name || 'Student',
                 mockExamCredits: user.mockExamCredits || 0,
                 activeTopicsCount: activeTopicsCount,
+                examsTaken: examsTakenCount, // <-- Fixed: Passes Exams Taken
+                lastActive: user.lastLogin || user.createdAt, // <-- Fixed: Passes Last Active
                 joinedDate: user.createdAt || new Date()
             };
-        });
+        }));
 
         res.json(formattedUsers);
     } catch (error) {

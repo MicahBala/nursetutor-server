@@ -20,10 +20,14 @@ export const syncUser = async (req, res) => {
                 firebaseUid: uid,
                 email: email,
                 displayName: name || '',
+                lastLogin: new Date() // <-- Set on initial creation
             });
             console.log(`✨ New user created: ${email}`);
         } else {
-            console.log(`✅ Existing user logged in: ${email}`);
+            // <-- UPDATE TIMESTAMP EVERY TIME THEY LOG IN -->
+            user.lastLogin = new Date();
+            await user.save();
+            console.log(`✅ Existing user logged in (Timestamp updated): ${email}`);
         }
 
         res.status(200).json(user);
@@ -116,5 +120,29 @@ export const verifyPayment = async (req, res) => {
     } catch (error) {
         console.error("Error verifying payment:", error);
         res.status(500).json({ error: 'Server error during verification' });
+    }
+};
+
+// ==========================================
+// NEW: SILENT ACTIVITY TRACKER
+// ==========================================
+export const updateLastActive = async (req, res) => {
+    try {
+        // Fallback to grab the email from the body
+        const email = req.body.email || (req.user && req.user.email);
+
+        if (!email) {
+            return res.status(400).json({ error: 'Email not found in request' });
+        }
+
+        await User.findOneAndUpdate(
+            { email: email },
+            { lastLogin: new Date() }
+        );
+
+        res.status(200).json({ success: true, message: 'Secure activity logged' });
+    } catch (error) {
+        console.error("❌ Error updating activity:", error);
+        res.status(500).json({ error: 'Failed to update activity' });
     }
 };
