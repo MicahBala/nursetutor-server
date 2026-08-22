@@ -2,7 +2,7 @@ import Groq from 'groq-sdk';
 import Question from '../models/Question.js';
 import User from '../models/User.js';
 import Topic from '../models/Topics.js';
-import Result from '../models/QuizResult.js'; // <-- THIS WAS MISSING!
+import Result from '../models/QuizResult.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -18,7 +18,6 @@ export const generateQuestions = async (req, res) => {
             return res.status(400).json({ error: 'Topic ID and Topic Name are required.' });
         }
 
-        // 1. The Prompt for Groq
         const prompt = `
             You are an expert Nursing Educator setting questions for the Nursing and Midwifery Council of Nigeria (NMCN) professional exams.
             Generate ${count} multiple-choice questions on the topic of "${topicName}". Half of the questions should be scenario-based.
@@ -35,14 +34,13 @@ export const generateQuestions = async (req, res) => {
                         "optionB": "Second option",
                         "optionC": "Third option",
                         "optionD": "Fourth option",
-                        "correctAnswer": "A", // MUST BE EXACTLY "A", "B", "C", or "D"
+                        "correctAnswer": "A", 
                         "rationale": "Detailed explanation of why this is the correct answer and why others are wrong."
                     }
                 ]
             }
         `;
 
-        // 2. Call the Groq AI with JSON mode forced
         const completion = await groq.chat.completions.create({
             messages: [
                 { role: 'system', content: 'You are an API that only outputs valid JSON.' },
@@ -53,7 +51,6 @@ export const generateQuestions = async (req, res) => {
             response_format: { type: 'json_object' }
         });
 
-        // 3. Extract and parse the JSON
         const responseText = completion.choices[0]?.message?.content || "{}";
         const parsedData = JSON.parse(responseText);
         const generatedQuestions = parsedData.questions || [];
@@ -62,7 +59,6 @@ export const generateQuestions = async (req, res) => {
             return res.status(500).json({ error: 'AI did not return any questions in the expected format.' });
         }
 
-        // 4. Map the questions to our Database Model structure
         const formattedQuestions = generatedQuestions.map(q => ({
             topicId,
             topicName,
@@ -76,7 +72,6 @@ export const generateQuestions = async (req, res) => {
             difficulty: 'medium'
         }));
 
-        // 5. Save them all to the Question Bank
         const savedQuestions = await Question.insertMany(formattedQuestions);
 
         res.status(201).json({
@@ -90,7 +85,6 @@ export const generateQuestions = async (req, res) => {
     }
 };
 
-// Admin Tool: Top up credits for testing
 export const topUpCredits = async (req, res) => {
     try {
         const { email, creditsToAdd } = req.body;
@@ -107,7 +101,6 @@ export const topUpCredits = async (req, res) => {
     }
 };
 
-// Admin Tool: Create a new Topic on the fly 
 export const createTopic = async (req, res) => {
     try {
         const { title, courseName, tags } = req.body;
@@ -140,7 +133,6 @@ export const createTopic = async (req, res) => {
     }
 };
 
-// Admin Tool: Manually unlock a topic for a user
 export const unlockTopicForUser = async (req, res) => {
     try {
         const { email, topicId, days = 30 } = req.body;
@@ -175,7 +167,6 @@ export const unlockTopicForUser = async (req, res) => {
     }
 };
 
-// Admin Tool: Generate Study Article and Quizzes via AI
 export const generateTopicContent = async (req, res) => {
     try {
         const { topicId, topicName } = req.body;
@@ -235,31 +226,47 @@ export const generateTopicContent = async (req, res) => {
 };
 
 // ==========================================
-// FIXED: GET ALL USERS (Admin Dashboard Overview)
+// UPGRADED: SERVER-SIDE PAGINATION & SEARCH
 // ==========================================
 export const getAllUsers = async (req, res) => {
     try {
-        const users = await User.find({}).sort({ createdAt: -1 });
+        // Extract query parameters with defaults
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 9;
+        const search = req.query.search || '';
 
-        // Promise.all ensures the database queries finish properly
+        // Build a dynamic MongoDB search query
+        const query = {};
+        if (search) {
+            query.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        // 1. Get totals for pagination metadata
+        const totalFilteredUsers = await User.countDocuments(query);
+        const totalPages = Math.ceil(totalFilteredUsers / limit);
+
+        // 2. Fetch only the requested 9 users using skip/limit
+        const users = await User.find(query)
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit);
+
+        // 3. Format those 9 users
         const formattedUsers = await Promise.all(users.map(async (user) => {
             const now = new Date();
             const activeTopicsCount = user.unlockedTopics
                 ? user.unlockedTopics.filter(t => new Date(t.expiresAt) > now).length
                 : 0;
 
-            // Safe Exams Taken count using the QuizResult model
             let examsTakenCount = 0;
             try {
                 examsTakenCount = await Result.countDocuments({
-                    $or: [
-                        { userId: user.firebaseUid },
-                        { userId: user.email }
-                    ]
+                    $or: [{ userId: user.firebaseUid }, { userId: user.email }]
                 });
-            } catch (err) {
-                console.error(`Warning: Could not fetch exam count for ${user.email}`);
-            }
+            } catch (err) { }
 
             return {
                 id: user._id,
@@ -268,12 +275,34 @@ export const getAllUsers = async (req, res) => {
                 mockExamCredits: user.mockExamCredits || 0,
                 activeTopicsCount: activeTopicsCount,
                 examsTaken: examsTakenCount,
-                lastActive: user.lastLogin || user.createdAt, // Passed safely to frontend!
+                lastActive: user.lastLogin || user.createdAt,
                 joinedDate: user.createdAt || new Date()
             };
         }));
 
-        res.json(formattedUsers);
+        // 4. Calculate Global Dashboard Stats (Total users, credits, unlocks across entire platform)
+        // We project only what we need to keep this lighting fast.
+        const allUsersForStats = await User.find({}, 'mockExamCredits unlockedTopics');
+        const globalTotalUsers = allUsersForStats.length;
+        const globalCredits = allUsersForStats.reduce((sum, u) => sum + (u.mockExamCredits || 0), 0);
+
+        const nowTime = new Date();
+        const globalUnlocks = allUsersForStats.reduce((sum, u) => {
+            const active = u.unlockedTopics ? u.unlockedTopics.filter(t => new Date(t.expiresAt) > nowTime).length : 0;
+            return sum + active;
+        }, 0);
+
+        // 5. Send back everything the frontend needs
+        res.json({
+            users: formattedUsers,
+            totalPages,
+            currentPage: page,
+            totalFilteredUsers,
+            globalTotalUsers,
+            globalCredits,
+            globalUnlocks
+        });
+
     } catch (error) {
         console.error("❌ Error fetching users:", error);
         res.status(500).json({ error: 'Failed to fetch users.' });
